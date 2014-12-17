@@ -12,7 +12,7 @@ typedef struct
 	char *request;
 } Header;
 
-Header parse_http_headers(char *buf, char * extension);
+Header parse_http_header(char *buf);
 int getRequestType(char *input);
 int handleHTTPRequest(char *input, char *type);
 int sendString(char *message, int socket);

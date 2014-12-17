@@ -20,11 +20,15 @@
 
 // Data una richiesta, isola i campi Accept, UserAgent e Host e li deposita in una struttura adHoc
 
-Header parse_http_headers(char *buf, char * extension) {
+
+Header parse_http_header(char *buf) {
 
 	Header head;
 	int counter=0;
 	head.fullHeader = buf;
+	head.host='\0';
+	head.acc='\0';
+	head.userAgent='\0';
 	char *appoggio[10];
 
 	int max_lines = split_lines(head.fullHeader, &appoggio);
@@ -51,7 +55,6 @@ Header parse_http_headers(char *buf, char * extension) {
 		{
 			head.acc=appoggio[counter];
 			head.acc=head.acc+8;
-			Log(head.acc);
 		}
 	}
 	return head;
@@ -315,7 +318,7 @@ int sendBinary(int *byte, int length)
 
 void sendHeader(char *Status_code, char *Content_Type, int TotalSize, int socket, int HttpVersion)
 {
-	char *head;
+	char *head = (char*)malloc(200);
 	char *content_head = "\nContent-Type: ";
 	char *server_head = "\nServer: PT06";
 	char *length_head = "\nContent-Length: ";
@@ -324,9 +327,7 @@ void sendHeader(char *Status_code, char *Content_Type, int TotalSize, int socket
 	char contentLength[100];
 	time_t rawtime;
 	time(&rawtime);
-
 	sprintf(contentLength, "%i", TotalSize);
-
 	if (HttpVersion == 1)
 		head = "HTTP/1.1 ";
 	else if (HttpVersion == 0 )
@@ -345,6 +346,7 @@ void sendHeader(char *Status_code, char *Content_Type, int TotalSize, int socket
 			28 +
 			sizeof(char)) * 2);
 
+
 	strcpy(message, head);
 	strcat(message, Status_code);
 	strcat(message, server_head);
@@ -358,7 +360,6 @@ void sendHeader(char *Status_code, char *Content_Type, int TotalSize, int socket
 	sendString(message, socket);
 	Log(message);
 	free(message);
-
 }
 
 // Invia il file binario richiesto
@@ -366,11 +367,10 @@ void sendHeader(char *Status_code, char *Content_Type, int TotalSize, int socket
 void sendFile(FILE *fdesc, int file_size)
 {
 	int current_char = 0;
-	do{
-		current_char = fgetc(fdesc);
+	while((current_char = fgetc(fdesc))!= EOF)
+	{
 		sendBinary(&current_char, sizeof(char));
 	}
-	while(current_char != EOF);
 }
 
 // Verifica l'esistenza dell'estensione del file richiesto confrontandolo con i MIME standard presenti nel file mime.types
@@ -503,31 +503,25 @@ int contentLenght(FILE *fp)
 
 int parseQuality(Header reqHeader, char* imageExtension)
 {
-	char *q_buff = malloc(200);
 	int quality;
 	char *q_start;
 	char *q_end = malloc(200);
-	char qmime[20]="image/";
+	char qmime[200]="image/";
 
 	// Se l'header Accept: è vuoto ritorna la qualità standard 100%
-	if (reqHeader.acc==NULL)
+	if (reqHeader.acc=='\0')
 		return 100;
 
 	// Se nell'accept è presente il mimeType image, verifica se l'estensione del file richiesto ne fa parte
 
-	if ( strstr(reqHeader.acc, "image")!=NULL)
-	{
+
 		if (strstr(reqHeader.acc,strcat(qmime,imageExtension))!=NULL)
 			q_start = strstr(reqHeader.acc, qmime);
-		else
+		else if (strstr(reqHeader.acc,"image/*")!= NULL)
 			q_start = strstr(reqHeader.acc, "image/*");
+		else if  (strstr(reqHeader.acc, "*/*")!=NULL)
+			q_start = strstr(reqHeader.acc, "*/*");
 		Log(q_start);
-	}
-
-	// Altrimenti se il mimeType è globale ne imposta la qualità.
-
-	else if  (strstr(reqHeader.acc, "*/*")!=NULL)
-		q_start = strstr(reqHeader.acc, "*/*");
 
 	// Ottiene il valore della qualità dall'header Accept
 
@@ -547,8 +541,6 @@ int parseQuality(Header reqHeader, char* imageExtension)
 		}
 		q_end[j]='\0';
 		quality=atoi(q_end);
-		sprintf(q_buff, "%d", quality);
-		Log(q_buff);
 		if (j==2)
 			return quality;
 		return quality*10;

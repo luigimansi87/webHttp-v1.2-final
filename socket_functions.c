@@ -25,6 +25,8 @@ struct sockaddr_storage connector;
 
 int receive(int socket)
 {
+	int k=0;
+	char*provaProc=malloc(200);
 	int msgLen = 0;
 	char buffer[BUFFER_SIZE];
 	memset (buffer,'\0', BUFFER_SIZE);
@@ -33,25 +35,31 @@ int receive(int socket)
 		printf("Errore nella gestione della richiesta in entrata");
 		return -1;
 	}
-	int request = getRequestType(buffer);
-	if ( request == 1 )	// GET
+	while (msgLen > 0)
 	{
-		Log(buffer);
-		handleHTTPRequest(buffer, "GET");
-	}
-	else if ( request == 2 )	// HEAD
-	{
-		Log(buffer);
-		handleHTTPRequest(buffer, "HEAD");
-	}
-	else if ( request == 0 )	// POST
-	{
-		Log(buffer);
-		sendString("501 Not Implemented\n", connecting_socket);
-	}
-	else
-	{
-		sendString("400 Bad Request\n", connecting_socket);
+
+		int request = getRequestType(buffer);
+		if ( request == 1 )	// GET
+		{
+			Log(buffer);
+			handleHTTPRequest(buffer, "GET");
+		}
+		else if ( request == 2 )	// HEAD
+		{
+			Log(buffer);
+			handleHTTPRequest(buffer, "HEAD");
+		}
+		else if ( request == 0 )	// POST
+		{
+			Log(buffer);
+			sendString("501 Not Implemented\n", connecting_socket);
+		}
+		else
+		{
+			sendString("400 Bad Request\n", connecting_socket);
+		}
+		msgLen = recv(socket, buffer, BUFFER_SIZE, 0);
+		k++;
 	}
 	return 1;
 }
@@ -109,6 +117,7 @@ void handle(int socket)
 
 void acceptConnection()
 {
+	pid_t pid;
 	addr_size = sizeof(connector);
 	connecting_socket = accept(current_socket, (struct sockaddr *)&connector, &addr_size);
 	if ( connecting_socket < 0 )
@@ -116,8 +125,22 @@ void acceptConnection()
 		perror("Errore in ascolto");
 		exit(-1);
 	}
-	handle(connecting_socket);
-	close(connecting_socket);
+	if ((pid=fork())!=0)
+	{
+		close(connecting_socket);
+	}
+	else
+	{
+		Log("Entro nel processo figlio");
+		close(current_socket);
+		Log("Gestisco la richiesta del figlio");
+		handle(connecting_socket);
+		Log("Ammazzo il processo figlio");
+		close(connecting_socket);
+		exit(0);
+
+	}
+
 }
 
 // Richiama le funzioni definite sopra
@@ -130,5 +153,6 @@ void start()
 	{
 		acceptConnection();
 	}
+
 }
 
