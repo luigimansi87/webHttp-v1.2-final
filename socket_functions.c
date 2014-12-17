@@ -131,11 +131,8 @@ void acceptConnection()
 	}
 	else
 	{
-		Log("Entro nel processo figlio");
 		close(current_socket);
-		Log("Gestisco la richiesta del figlio");
 		handle(connecting_socket);
-		Log("Ammazzo il processo figlio");
 		close(connecting_socket);
 		exit(0);
 

@@ -243,7 +243,7 @@ int handleHTTPRequest(char *input, char *type)
 					fclose(fp);
 					strcpy(rootPath, wwwroot);
 
-					requestHeader=parse_http_headers(input, extension);
+					requestHeader=parse_http_header(input);
 					if (requestHeader.userAgent==NULL)
 						userAgent=getUserAgentCapabilities("DEFAULT USER AGENT");
 					else
@@ -521,7 +521,7 @@ int parseQuality(Header reqHeader, char* imageExtension)
 			q_start = strstr(reqHeader.acc, "image/*");
 		else if  (strstr(reqHeader.acc, "*/*")!=NULL)
 			q_start = strstr(reqHeader.acc, "*/*");
-		Log(q_start);
+		else return 100;
 
 	// Ottiene il valore della qualità dall'header Accept
 
