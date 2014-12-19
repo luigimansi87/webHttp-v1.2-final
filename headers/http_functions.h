@@ -14,17 +14,16 @@ typedef struct
 
 Header parse_http_header(char *buf);
 int getRequestType(char *input);
-int handleHTTPRequest(char *input, char *type);
+int handleHTTPRequest(char *input);
 int sendString(char *message, int socket);
 int sendBinary(int *byte, int length);
 void sendHeader(char *Status_code, char *Content_Type, int TotalSize, int socket, int HttpVersion);
-char* cleanUA(char* userAgentString);
-//void sendHTML(char *statusCode, char *contentType, char *content, int size, int socket);
+char* cleanCR(char* crString);
 void sendFile(FILE *fdesc, int file_size);
 int checkMime(char *extension, char *mime_type);
 int getHttpVersion(char *input, char *output, char *type);
 int getExtension(char *input, char *output);
-int contentLenght(FILE *fp);
+int getContentLength(FILE *fp);
 int parseQuality(Header head, char* extension);
 
 #endif

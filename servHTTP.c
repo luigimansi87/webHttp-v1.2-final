@@ -9,7 +9,7 @@
 #include <netinet/in.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <pthread.h>
+#include <unistd.h>
 #include <sys/wait.h>
 #include <time.h>
 

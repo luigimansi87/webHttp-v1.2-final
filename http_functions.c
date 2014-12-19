@@ -29,32 +29,36 @@ Header parse_http_header(char *buf) {
 	head.host='\0';
 	head.acc='\0';
 	head.userAgent='\0';
-	char *appoggio[10];
+	char *appoggio[100];
 
-	int max_lines = split_lines(head.fullHeader, &appoggio);
+	int max_lines = splitLines(head.fullHeader, &appoggio);
 
 	for (counter=0; counter<max_lines;counter++)
 	{
 		if (counter==0)
 		{
 			head.request=appoggio[counter];
+			head.request=cleanCR(head.request);
 		}
 		else if (strstr(appoggio[counter], "Host:")!=NULL)
 		{
 			head.host=appoggio[counter];
 			head.host=head.host+6;
+			head.host=cleanCR(head.host);
 		}
 
 		else if (strstr(appoggio[counter], "User-Agent:")!=NULL)
 		{
 			head.userAgent=appoggio[counter];
 			head.userAgent=head.userAgent+12;
+			head.userAgent=cleanCR(head.userAgent);
 		}
 
 		else if (strstr(appoggio[counter], "Accept:")!=NULL)
 		{
 			head.acc=appoggio[counter];
 			head.acc=head.acc+8;
+			head.acc=cleanCR(head.acc);
 		}
 	}
 	return head;
@@ -98,16 +102,13 @@ int getRequestType(char *input)
 }
 
 // Gestione della richiesta HTTP ( HEAD / GET )
-int handleHTTPRequest(char *input, char *type)
+int handleHTTPRequest(char *input)
 {
 
-
-	char *NFpath = (char*)malloc(1000);
-	char *NFfilename = (char*)malloc(200);
-
+	char *type = (char*)malloc(50);
+	char *errPath = (char*)malloc(1000);
 	char *resFilename = (char*)malloc(200);
 	char *resPath = (char*)malloc(1000);
-
 	char *filename = (char*)malloc(200);
 	char *rootPath = (char*)malloc(1000);
 	char *extension = (char*)malloc(10);
@@ -124,22 +125,40 @@ int handleHTTPRequest(char *input, char *type)
 	int mimeSupported = 0;
 	int fileNameLenght = 0;
 
-	memset(NFpath, '\0', 1000);
-	memset(NFfilename, '\0', 200);
+	memset(errPath, '\0', 1000);
 	memset(rootPath, '\0', 1000);
 	memset(filename, '\0', 200);
 	memset(extension, '\0', 10);
 	memset(mime, '\0', 200);
 	memset(httpVersion, '\0', 20);
+	requestHeader=parse_http_header(input);
 
-	if (strcmp(type,"HEAD")==0)
-		fileNameLenght = scan(input, filename, 6);
+	int request = getRequestType(requestHeader.request);
+	if ( request == 1 )	// GET
+	{
+		type = "GET";
+	}
+	else if ( request == 2 )	// HEAD
+	{
+		type = "HEAD";
+	}
+	else if ( request == 0 )	// POST
+	{
+		sendString("501 Not Implemented\n", connecting_socket);
+	}
 	else
-		fileNameLenght = scan(input, filename, 5);
+	{
+		sendString("400 Bad Request\n", connecting_socket);
+	}
+
+	if (request == 2)
+		fileNameLenght = scan(requestHeader.request, filename, 6);
+	else
+		fileNameLenght = scan(requestHeader.request, filename, 5);
 
 	if ( fileNameLenght >= 5 )
 	{
-		httpVer = getHttpVersion(input, httpVersion, type);
+		httpVer = getHttpVersion(requestHeader.request, httpVersion, type);
 		if ( httpVer != -1 )
 		{
 			// Gestisce la richiesta /
@@ -154,19 +173,25 @@ int handleHTTPRequest(char *input, char *type)
 
 			if ( getExtension(filename, extension) == -1 )
 			{
-				sendHeader("400 Bad Request", mime, contentLength, connecting_socket, httpVer);
-				Log("400 Bad Request\n");
-
+				strcpy(errPath, wwwroot);
+				strcat(errPath, "400.html");
+				fp=fopen(errPath,"rb");
+				sendHeader("400 Bad Request", "text/html", getContentLength(fp), connecting_socket, httpVer);
+				Log("400 Bad Request");
+				sendFile(fp, getContentLength(fp));
+				fclose(fp);
 				free(filename);
 				free(mime);
-				free(rootPath);
 				free(extension);
-				return 1;
+				free(rootPath);
+				free(errPath);
+				return -1;
 			}
+
 			/* Inizializza le directory di lavoro del webServer:
 			 * rootPath -> root del webserver
 			 * resPath -> cartella contenente le risorse ( immagini, file di testo ecc. )
-			 * NFPath -> Path del file 404.html
+			 * errPath -> Path per i file di errore
 			 */
 
 			strcpy(rootPath, wwwroot);
@@ -183,16 +208,17 @@ int handleHTTPRequest(char *input, char *type)
 				fp= fopen(resFilename, "rb");
 			if (fp==NULL)
 			{
-				strcpy(NFpath, wwwroot);
-				strcat(NFpath, "404.html");
-				fp=fopen(NFpath,"rb");
-				sendHeader("404 Not Found", "text/html", contentLenght(fp), connecting_socket, httpVer);
+				strcpy(errPath, wwwroot);
+				strcat(errPath, "404.html");
+				fp=fopen(errPath,"rb");
+				sendHeader("404 Not Found", "text/html", getContentLength(fp), connecting_socket, httpVer);
 				Log("404 Not Found");
-				sendFile(fp, contentLenght(fp));
+				sendFile(fp, getContentLength(fp));
 				fclose(fp);
 				free(filename);
 				free(extension);
 				free(rootPath);
+				free(errPath);
 				return -1;
 			}
 
@@ -201,18 +227,25 @@ int handleHTTPRequest(char *input, char *type)
 			mimeSupported = checkMime(extension, mime);
 			if ( mimeSupported != 1)
 			{
-				sendHeader("400 Bad Request", mime, contentLength, connecting_socket, httpVer);
-				Log("Mime not supported\n 400 Bad Request\n");
+				fclose(fp);
+
+				strcpy(errPath, wwwroot);
+				strcat(errPath, "415.html");
+				fp=fopen(errPath,"rb");
+				sendHeader("415 Unsupported Media Type", "text/html", getContentLength(fp), connecting_socket, httpVer);
+				Log("415 Unsupported Media Type");
+				sendFile(fp, getContentLength(fp));
 				fclose(fp);
 				free(filename);
 				free(mime);
-				free(rootPath);
 				free(extension);
+				free(rootPath);
+				free(errPath);
 				return -1;
 			}
 
 			// Calcola la grandezza del file
-			contentLength = contentLenght(fp);
+			contentLength = getContentLength(fp);
 			if (contentLength < 0 )
 			{
 				Log("La dimensione del file è 0");
@@ -223,45 +256,36 @@ int handleHTTPRequest(char *input, char *type)
 				fclose(fp);
 				return -1;
 			}
-
-			// Se è una HEAD, restituisci l'intestazione
-			if (strcmp(type, "HEAD")==0){
-				sendHeader("200 OK", mime, contentLength, connecting_socket, httpVer);
-				Log("200 OK - Header Sent ( HEAD )");
+			// Se è un'immagine, processa la qualità e le caratteristiche richieste dall'UserAgent
+			if (strstr(mime,"image")!=NULL)
+			{
 				fclose(fp);
+				strcpy(rootPath, wwwroot);
+
+				if (requestHeader.userAgent==NULL)
+					userAgent=getUserAgentCapabilities("DEFAULT USER AGENT");
+				else
+					userAgent=getUserAgentCapabilities(requestHeader.userAgent);
+
+				strcat(resPath, convert(filename, userAgent, parseQuality(requestHeader, extension), extension));
+				fp = fopen(resPath, "rb");
+				contentLength = getContentLength(fp);
 			}
 
-			// Se è una GET, analizza la richiesta
-
-			else if (strcmp(type, "GET")==0)
+			sendHeader("200 OK", mime, contentLength, connecting_socket, httpVer);
+			if (request==1)
 			{
-				// Se è un'immagine, processa la qualità e le caratteristiche richieste dall'UserAgent
-
-				if (strstr(mime,"image")!=NULL)
-				{
-
-					fclose(fp);
-					strcpy(rootPath, wwwroot);
-
-					requestHeader=parse_http_header(input);
-					if (requestHeader.userAgent==NULL)
-						userAgent=getUserAgentCapabilities("DEFAULT USER AGENT");
-					else
-						userAgent=getUserAgentCapabilities(cleanUA(requestHeader.userAgent));
-
-					strcat(resPath, convert(filename, userAgent, parseQuality(requestHeader, extension), extension));
-
-					fp = fopen(resPath, "rb");
-					contentLength = contentLenght(fp);
-				}
-
-				sendHeader("200 OK", mime, contentLength, connecting_socket, httpVer);
 				sendFile(fp, contentLength);
 				Log("200 OK - File Sent");
-
 				fclose(fp);
-
 			}
+			else
+				{
+				Log("200 OK - Header Sent");
+				fclose(fp);
+				}
+
+			fclose(fp);
 			free(filename);
 			free(mime);
 			free(extension);
@@ -270,8 +294,19 @@ int handleHTTPRequest(char *input, char *type)
 		}
 		else
 		{
-			sendHeader("501 Not Implemented", mime, contentLength, connecting_socket,httpVer);
-			Log("501 Not Implemented\n");
+			strcpy(errPath, wwwroot);
+			strcat(errPath, "501.html");
+			fp=fopen(errPath,"rb");
+			sendHeader("501 - Not Implemented", "text/html", getContentLength(fp), connecting_socket, httpVer);
+			Log("501 - Not Implemented");
+			sendFile(fp, getContentLength(fp));
+			fclose(fp);
+			free(filename);
+			free(mime);
+			free(extension);
+			free(rootPath);
+			free(errPath);
+			return -1;
 		}
 	}
 	return -1;
@@ -279,18 +314,18 @@ int handleHTTPRequest(char *input, char *type)
 
 // Elimina i ^M dalla stringa UserAgent dell'header
 
-char* cleanUA(char* userAgentString)
+char* cleanCR(char* crString)
 {
-	char *uaBuff = malloc(250);
-	int uaCount = 0;
+	char *crFreeString = malloc(250);
+	int count = 0;
 
-	while (userAgentString[uaCount]!='\r')
+	while (crString[count]!='\r')
 	{
-		uaBuff[uaCount]=userAgentString[uaCount];
-		uaCount++;
+		crFreeString[count]=crString[count];
+		count++;
 	}
-	uaBuff[uaCount] = '\0';
-	return uaBuff;
+	crFreeString[count] = '\0';
+	return crFreeString;
 
 }
 
@@ -381,7 +416,6 @@ int checkMime(char *extension, char *mime_type)
 	char *mimeList = malloc(500);
 	char *word_holder = malloc(600);
 	char *line = malloc(350);
-
 	int startline = 0;
 
 	strcat(mimeList,wwwroot);
@@ -428,6 +462,7 @@ int checkMime(char *extension, char *mime_type)
 		}
 		memset (line,'\0',200);
 	}
+	fclose(mimeFile);
 	free(current_word);
 	free(word_holder);
 	free(line);
@@ -490,7 +525,7 @@ int getExtension(char *input, char *output)
 
 // Computa la lunghezza del file richiesto
 
-int contentLenght(FILE *fp)
+int getContentLength(FILE *fp)
 {
 	int filesize = 0;
 	fseek(fp, 0, SEEK_END);
@@ -515,13 +550,14 @@ int parseQuality(Header reqHeader, char* imageExtension)
 	// Se nell'accept è presente il mimeType image, verifica se l'estensione del file richiesto ne fa parte
 
 
-		if (strstr(reqHeader.acc,strcat(qmime,imageExtension))!=NULL)
-			q_start = strstr(reqHeader.acc, qmime);
-		else if (strstr(reqHeader.acc,"image/*")!= NULL)
-			q_start = strstr(reqHeader.acc, "image/*");
-		else if  (strstr(reqHeader.acc, "*/*")!=NULL)
-			q_start = strstr(reqHeader.acc, "*/*");
-		else return 100;
+	if (strstr(reqHeader.acc,strcat(qmime,imageExtension))!=NULL)
+		q_start = strstr(reqHeader.acc, qmime);
+	else if (strstr(reqHeader.acc,"image/*")!= NULL)
+		q_start = strstr(reqHeader.acc, "image/*");
+	else if  (strstr(reqHeader.acc, "*/*")!=NULL)
+		q_start = strstr(reqHeader.acc, "*/*");
+	else return 100;
+
 
 	// Ottiene il valore della qualità dall'header Accept
 
@@ -534,7 +570,7 @@ int parseQuality(Header reqHeader, char* imageExtension)
 			return 100;
 		else
 			q_start=q_start+2;
-		while (q_start[j] != ',' && q_start[j] != '\r')
+		while (q_start[j] != ',' &&  q_start[j] != '\0')
 		{
 			q_end[j] = q_start[j];
 			j++;

@@ -10,11 +10,13 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "headers/config_functions.h"
 #include "headers/auxiliary_functions.h"
 #include "headers/socket_functions.h"
 #include "headers/log.h"
+#include "headers/http_functions.h"
 
 
 socklen_t addr_size;
@@ -25,8 +27,7 @@ struct sockaddr_storage connector;
 
 int receive(int socket)
 {
-	int k=0;
-	char*provaProc=malloc(200);
+
 	int msgLen = 0;
 	char buffer[BUFFER_SIZE];
 	memset (buffer,'\0', BUFFER_SIZE);
@@ -35,31 +36,12 @@ int receive(int socket)
 		printf("Errore nella gestione della richiesta in entrata");
 		return -1;
 	}
+	// Fintanto che il buffer di ricezione è pieno, mantiene aperta la connessione
 	while (msgLen > 0)
 	{
-
-		int request = getRequestType(buffer);
-		if ( request == 1 )	// GET
-		{
-			Log(buffer);
-			handleHTTPRequest(buffer, "GET");
-		}
-		else if ( request == 2 )	// HEAD
-		{
-			Log(buffer);
-			handleHTTPRequest(buffer, "HEAD");
-		}
-		else if ( request == 0 )	// POST
-		{
-			Log(buffer);
-			sendString("501 Not Implemented\n", connecting_socket);
-		}
-		else
-		{
-			sendString("400 Bad Request\n", connecting_socket);
-		}
+		Log(buffer);
+		handleHTTPRequest(buffer);
 		msgLen = recv(socket, buffer, BUFFER_SIZE, 0);
-		k++;
 	}
 	return 1;
 }
@@ -125,6 +107,7 @@ void acceptConnection()
 		perror("Errore in ascolto");
 		exit(-1);
 	}
+	// Per ogni nuova connessione, genera un processo figlio per gestirla
 	if ((pid=fork())!=0)
 	{
 		close(connecting_socket);

@@ -7,7 +7,7 @@
 
 // Funzione ausiliaria per dividere una richiesta in singole linee terminate da un \0
 
-int split_lines(char *buffer, char **line_buffer) {
+int splitLines(char *buffer, char **line_buffer) {
 	size_t cur_line;
 	char *l_start, *l_end;
 
@@ -21,7 +21,7 @@ int split_lines(char *buffer, char **line_buffer) {
 		if ('\n' == l_end[0]) {
 
 			if ((size_t) (l_end - l_start) > 1) {
-				line_buffer[cur_line] = calloc(750, sizeof(char));
+				line_buffer[cur_line] = calloc(800, sizeof(char));
 				if (NULL == line_buffer[cur_line])
 					return -1;
 
